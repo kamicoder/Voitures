@@ -1,0 +1,23 @@
+/* Les couleurs et les polices de ma page */
+
+body {
+  background: #16151d;
+  color: #e9e4f0;
+  font-family: Verdana, sans-serif;
+  text-align: center;
+}
+
+h1 {
+  color: #ff7a1a;
+  margin: 12px 0;
+}
+
+canvas {
+  border: 2px solid #ff7a1a;
+  border-radius: 8px;
+}
+
+.aide {
+  color: #a49cb4;
+  font-size: 14px;
+}
