@@ -23,6 +23,14 @@ const RETOUR_BIDON = 5;                    // secondes avant qu'un bidon ramass�
 // L'aide : une voiture presque arrêtée hors de la route y est remise après ce temps (en secondes)
 const REMISE_SUR_LA_ROUTE = 1.5;
 
+// Au doigt, c'est plus difficile qu'au clavier : quelques coups de pouce
+const AIDE_MOBILE = {
+  rivaux: 0.92,                            // les rivaux vont un peu moins vite
+  frottementHerbe: 1.3,                    // l'herbe freine moins
+  huile: 0.5,                              // une flaque d'huile fait glisser deux fois moins longtemps
+  direction: 0.7,                          // sans toucher ◀ ▶, la voiture se remet doucement dans l'axe de la route
+};
+
 class Voiture {
   // commandes : ses touches (avancer, reculer, gauche, droite, nitro), ou null pour l'ordinateur
   constructor(nom, couleur, commandes, niveau) {
@@ -34,8 +42,14 @@ class Voiture {
     this.entrees = { avancer: false, reculer: false, gauche: false, droite: false, nitro: false };
     if (!this.ordinateur) {
       this.moteur = new Audio("sons/moteur.wav");
-      this.moteur.loop = true;             // le son recommence sans fin
       this.moteur.volume = 0.25;
+      if (modeTactile) {
+        // Un haut-parleur de téléphone ne sait pas jouer les sons très graves : ce moteur-là a la même
+        // note, mais avec beaucoup d'aigus en plus, et il joue plus fort
+        this.moteur = new Audio("sons/moteur-mobile.wav");
+        this.moteur.volume = 0.6;
+      }
+      this.moteur.loop = true;             // le son recommence sans fin
       this.moteur.preservesPitch = false;
     }
   }
@@ -64,6 +78,7 @@ class Voiture {
     // Où elle en est : son point sur la trace, et le chemin parcouru depuis la ligne
     this.indice = plusProche(circuit, this.x, this.y, 0);
     this.progres = -recul;
+    this.rouleDepuisLePoint = 0;           // ce qu'elle a roulé depuis qu'elle a changé de point
   }
 
   // Ce que veut le conducteur : les touches du joueur, ou les idées de l'ordinateur
@@ -109,6 +124,20 @@ class Voiture {
     this.entrees.nitro = virage < 0.2 && Math.abs(ecart) < 0.1;   // la nitro, dans une ligne droite
   }
 
+  // Seul au doigt, le joueur reçoit les coups de pouce d'AIDE_MOBILE
+  aidee() {
+    return !this.ordinateur && modeTactile && joueurs().length === 1;
+  }
+
+  // L'aide au pilotage : on vise un point de la route un peu devant, et on tourne doucement vers lui
+  redresser(duree, roule) {
+    const trace = circuit.trace;
+    const cible = trace[(this.indice + 12 + Math.round(Math.max(0, this.vitesse) / 40)) % trace.length];
+    const ecart = angleEntre(Math.atan2(cible.y - this.y, cible.x - this.x), this.angle);
+    const pas = AIDE_MOBILE.direction * roule * duree;   // jamais plus que ça par image : c'est doux
+    this.angle = this.angle + Math.max(-pas, Math.min(pas, ecart));
+  }
+
   conduire(duree) {
     this.lireLesEntrees();
     if (this.entrees.nitro && this.nitro > 0 && this.turbo <= 0) {
@@ -124,6 +153,9 @@ class Voiture {
     const dansLHerbe = !surLaRoute(this.x, this.y);
     if (dansLHerbe) {
       frottement = FROTTEMENT_HERBE;
+      if (this.aidee()) {
+        frottement = AIDE_MOBILE.frottementHerbe;
+      }
       adherence = ADHERENCE_HERBE;
     }
     if (this.huile > 0) {
@@ -169,6 +201,9 @@ class Voiture {
     }
     if (this.entrees.droite) {
       this.angle = this.angle + VIRAGE * roule * sens * duree;
+    }
+    if (this.aidee() && !this.entrees.gauche && !this.entrees.droite && avant > 100) {
+      this.redresser(duree, roule);
     }
 
     // On recolle les deux parts, puis on avance
@@ -232,7 +267,11 @@ class Voiture {
 
   // Son point sur la trace, et le chemin parcouru le long de la route depuis la ligne.
   // Dans l'herbe, seul compte ce qu'elle a vraiment roulé : un raccourci ne fait pas gagner de chemin.
+  // On compare avec tout ce qu'elle a roulé depuis son dernier point de la trace, pas seulement pendant
+  // cette image : les points sont à 10 pixels l'un de l'autre, et dans l'herbe elle n'en roule que 3 ou 4
+  // par image. Sinon, à chaque point, elle perdrait du chemin, et la course finirait après la ligne.
   suivreLaTrace(roule, dansLHerbe) {
+    this.rouleDepuisLePoint = this.rouleDepuisLePoint + roule;
     const i = plusProche(circuit, this.x, this.y, this.indice);
     let chemin = circuit.trace[i].d - circuit.trace[this.indice].d;
     if (chemin > circuit.longueur / 2) {
@@ -242,9 +281,12 @@ class Voiture {
       chemin = chemin + circuit.longueur;  // elle a passé la ligne
     }
     if (dansLHerbe) {
-      chemin = Math.min(chemin, roule);
+      chemin = Math.min(chemin, this.rouleDepuisLePoint);
     }
     this.progres = this.progres + chemin;
+    if (i !== this.indice) {
+      this.rouleDepuisLePoint = 0;         // un nouveau point : on recommence à compter
+    }
     this.indice = i;
   }
 
@@ -280,6 +322,9 @@ class Voiture {
     for (const huile of circuit.huiles) {
       if (this.huile <= 0 && Math.hypot(this.x - huile.x, this.y - huile.y) < 32) {
         this.huile = DUREE_HUILE;
+        if (this.aidee()) {
+          this.huile = DUREE_HUILE * AIDE_MOBILE.huile;
+        }
         gerbe(this.x, this.y, "#16141a");
       }
     }

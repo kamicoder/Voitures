@@ -152,6 +152,9 @@ function commencer(nouveauMode, modele, niveau) {
     voitures.push(new Voiture("Toi", "#ff7a1a", JOUEUR_SEUL, 1));
   }
   if (mode === "course" || mode === "grandprix") {
+    if (modeTactile) {
+      niveau = niveau * AIDE_MOBILE.rivaux;   // au doigt, les rivaux lèvent un peu le pied
+    }
     for (const rival of RIVAUX) {
       voitures.push(new Voiture(rival.nom, rival.couleur, null, niveau));
     }
