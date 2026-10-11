@@ -5,6 +5,13 @@ body {
   color: #e9e4f0;
   font-family: Verdana, sans-serif;
   text-align: center;
+  margin: 0;
+  padding: 8px 16px;
+  overscroll-behavior: none;               /* pas de rebond de la page sur téléphone */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 h1 {
@@ -12,12 +19,76 @@ h1 {
   margin: 12px 0;
 }
 
+/* La toile garde sa forme (960 × 600) et rétrécit si la fenêtre est trop petite */
 canvas {
+  display: block;
+  margin: 0 auto;
+  width: min(100%, calc((100vh - 130px) * 1.6));
+  height: auto;
+  aspect-ratio: 960 / 600;
   border: 2px solid #ff7a1a;
   border-radius: 8px;
+  box-sizing: border-box;
+  touch-action: none;                      /* les doigts sont pour le jeu, pas pour faire défiler */
 }
 
 .aide {
   color: #a49cb4;
   font-size: 14px;
+}
+
+/* Téléphones et tablettes, ou petites fenêtres : la toile prend toute la place */
+@media (pointer: coarse), (max-height: 560px) {
+  html, body {
+    height: 100%;
+  }
+  body {
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0c0b10;
+  }
+  h1, .aide {
+    display: none;
+  }
+  canvas {
+    width: min(100vw, 100vh * 1.6);
+    width: min(100vw, 100dvh * 1.6);
+    border: none;
+    border-radius: 0;
+  }
+}
+
+/* En portrait sur téléphone : on demande de tourner l'écran */
+#tourne {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px;
+  font-size: 24px;
+  font-weight: bold;
+  color: #ff7a1a;
+  background: #16151d;
+}
+
+#tourne .dessin {
+  font-size: 64px;
+  animation: tourne 2s ease-in-out infinite;
+}
+
+@keyframes tourne {
+  0%, 30% { transform: rotate(0); }
+  60%, 100% { transform: rotate(90deg); }
+}
+
+@media (orientation: portrait) and (pointer: coarse) {
+  #tourne {
+    display: flex;
+  }
 }

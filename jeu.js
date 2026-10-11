@@ -3,6 +3,11 @@ console.log("Le jeu se charge.");
 
 const toile = document.getElementById("toile");
 const pinceau = toile.getContext("2d");    // le pinceau qui dessine sur la toile
+const LARGEUR = 960;                       // on dessine toujours sur une toile de 960 × 600…
+const HAUTEUR = 600;
+const FINESSE = Math.min(2, window.devicePixelRatio || 1);   // … avec plus de pixels sur les écrans fins
+toile.width = LARGEUR * FINESSE;
+toile.height = HAUTEUR * FINESSE;
 
 const TOURS = 3;                           // les tours d'une course
 const NOM_DU_JEU = "course-de-pixy";       // le début du nom de chaque sauvegarde
@@ -130,7 +135,7 @@ function lireLeRecord(modele) {
 function jouer(son, vitesse) {
   son.playbackRate = vitesse;
   son.currentTime = 0;
-  son.play();
+  son.play().catch(function () {});        // le navigateur peut refuser le son avant un premier toucher
 }
 
 // ===== La course =====
@@ -170,7 +175,7 @@ function commencer(nouveauMode, modele, niveau) {
   jouer(sonBip, 1);
   for (const voiture of voitures) {
     if (voiture.moteur !== undefined) {
-      voiture.moteur.play();
+      voiture.moteur.play().catch(function () {});
     }
   }
 }
@@ -365,13 +370,19 @@ function apresLArrivee() {
   }
 }
 
-// ===== L'éditeur : un circuit à toi, dessiné à la souris =====
+// ===== L'éditeur : un circuit à toi, dessiné à la souris ou au doigt =====
 
 const MONDE_EDITEUR = { largeur: 2600, hauteur: 1800 };
 const POINTS_MAX = 10;                     // assez pour un beau circuit, pas trop pour s'y perdre
-const ECHELLE_EDITEUR = 0.35;              // le monde, en petit sur la toile
+const ECHELLE_EDITEUR = 0.29;              // le monde, en petit sur la toile : il y tient en entier
+const EDITEUR_X = 103;                     // le coin du monde sur la toile
+const EDITEUR_Y = 48;
+const BOUTON_FINI = { x: 868, y: 250, largeur: 84, hauteur: 84 };   // au doigt, il remplace Entrée
 let pointsEditeur = [];
 let pointTenu = -1;                        // le numéro du point qu'on glisse, ou -1
+let pointNouveau = false;                  // vrai si le point tenu vient d'être posé
+let pointABouge = false;                   // vrai si on l'a vraiment glissé
+let departDuGlisse = null;                 // où le doigt s'est posé
 
 function ouvrirLEditeur() {
   const dessine = circuitDessine();
@@ -383,10 +394,10 @@ function ouvrirLEditeur() {
   etat = "editeur";
 }
 
-// La souris sur la toile, en coordonnées du monde, sans sortir du monde ni coller à son bord
-function versLeMonde(evenement) {
-  const x = Math.round((evenement.offsetX - 25) / ECHELLE_EDITEUR);
-  const y = Math.round((evenement.offsetY - 45) / ECHELLE_EDITEUR);
+// Un point de la toile, en coordonnées du monde, sans sortir du monde ni coller à son bord
+function versLeMonde(p) {
+  const x = Math.round((p.x - EDITEUR_X) / ECHELLE_EDITEUR);
+  const y = Math.round((p.y - EDITEUR_Y) / ECHELLE_EDITEUR);
   return {
     x: Math.max(100, Math.min(x, MONDE_EDITEUR.largeur - 100)),
     y: Math.max(100, Math.min(y, MONDE_EDITEUR.hauteur - 100)),
@@ -394,8 +405,12 @@ function versLeMonde(evenement) {
 }
 
 function pointSous(p) {
+  let rayon = 50;
+  if (modeTactile) {
+    rayon = 100;                           // un doigt, c'est moins précis qu'une souris
+  }
   for (let i = 0; i < pointsEditeur.length; i = i + 1) {
-    if (Math.hypot(pointsEditeur[i].x - p.x, pointsEditeur[i].y - p.y) < 50) {
+    if (Math.hypot(pointsEditeur[i].x - p.x, pointsEditeur[i].y - p.y) < rayon) {
       return i;
     }
   }
@@ -414,11 +429,16 @@ function enregistrerLeCircuit() {
 
 function dessinerEditeur() {
   pinceau.fillStyle = "#1c1a25";
-  pinceau.fillRect(0, 0, toile.width, toile.height);
-  ecrire("Clic : un point (" + pointsEditeur.length + "/" + POINTS_MAX + ")   Glisser : le déplacer   Clic droit : l'enlever",
-    toile.width / 2, 28, 15, "#e9e4f0");
+  pinceau.fillRect(0, 0, LARGEUR, HAUTEUR);
+  const nombre = "(" + pointsEditeur.length + "/" + POINTS_MAX + ")";
+  if (modeTactile) {
+    ecrire("Touche : un point " + nombre + "   Glisse : le déplacer   Touche-le sans glisser : l'enlever",
+      LARGEUR / 2, 30, 15, "#e9e4f0");
+  } else {
+    ecrire("Clic : un point " + nombre + "   Glisser : le déplacer   Clic droit : l'enlever", LARGEUR / 2, 30, 15, "#e9e4f0");
+  }
   pinceau.save();
-  pinceau.translate(25, 45);
+  pinceau.translate(EDITEUR_X, EDITEUR_Y);
   pinceau.scale(ECHELLE_EDITEUR, ECHELLE_EDITEUR);
   pinceau.fillStyle = "#3f8f3a";
   pinceau.fillRect(0, 0, MONDE_EDITEUR.largeur, MONDE_EDITEUR.hauteur);
@@ -438,50 +458,63 @@ function dessinerEditeur() {
     ecrire(i + 1, p.x, p.y + 20, 56, "white");
   }
   pinceau.restore();
-  let message = "Entrée : enregistrer et revenir au menu";
-  if (pointsEditeur.length < 4) {
-    message = "Il faut au moins 4 points (Entrée : revenir sans enregistrer)";
+  let touche = "Entrée";
+  if (modeTactile) {
+    touche = "✔";
+    pinceau.fillStyle = "#ff7a1a";
+    pinceau.beginPath();
+    pinceau.roundRect(BOUTON_FINI.x, BOUTON_FINI.y, BOUTON_FINI.largeur, BOUTON_FINI.hauteur, 16);
+    pinceau.fill();
+    ecrire("✔", BOUTON_FINI.x + BOUTON_FINI.largeur / 2, BOUTON_FINI.y + 56, 44, "#1c1a25");
   }
-  ecrire(message, toile.width / 2, toile.height - 8, 15, "#ffd479");
+  let message = touche + " : enregistrer et revenir au menu";
+  if (pointsEditeur.length < 4) {
+    message = "Il faut au moins 4 points (" + touche + " : revenir sans enregistrer)";
+  }
+  ecrire(message, LARGEUR / 2, HAUTEUR - 9, 15, "#ffd479");
 }
 
-toile.addEventListener("mousedown", function (evenement) {
-  if (etat === "menu") {
-    sourisDuMenu("clic", evenement.offsetX, evenement.offsetY);
-  }
-  if (etat !== "editeur") {
-    return;
-  }
-  const p = versLeMonde(evenement);
-  const i = pointSous(p);
-  if (evenement.button === 2) {            // le clic droit enlève le point
-    if (i >= 0) {
-      pointsEditeur.splice(i, 1);
+// La souris ou le doigt dans l'éditeur. type : "bas" (on appuie), "bouge" ou "haut" (on lâche)
+function sourisDeLEditeur(type, p, bouton) {
+  if (type === "bas") {
+    if (modeTactile && dedans(p.x, p.y, BOUTON_FINI)) {
+      enregistrerLeCircuit();
+      return;
     }
-  } else if (i >= 0) {
-    pointTenu = i;
-  } else if (pointsEditeur.length < POINTS_MAX) {
-    pointsEditeur.push(p);
-    pointTenu = pointsEditeur.length - 1;
+    const monde = versLeMonde(p);
+    const i = pointSous(monde);
+    pointNouveau = false;
+    pointABouge = false;
+    departDuGlisse = p;
+    if (bouton === 2) {                    // le clic droit enlève le point
+      if (i >= 0) {
+        pointsEditeur.splice(i, 1);
+      }
+    } else if (i >= 0) {
+      pointTenu = i;
+    } else if (pointsEditeur.length < POINTS_MAX) {
+      pointsEditeur.push(monde);
+      pointTenu = pointsEditeur.length - 1;
+      pointNouveau = true;
+    }
+  } else if (type === "bouge") {
+    if (pointTenu >= 0) {
+      // Un tout petit tremblement du doigt ne compte pas
+      if (Math.hypot(p.x - departDuGlisse.x, p.y - departDuGlisse.y) > 8) {
+        pointABouge = true;
+      }
+      if (pointABouge) {
+        pointsEditeur[pointTenu] = versLeMonde(p);
+      }
+    }
+  } else {
+    // Au doigt, pas de clic droit : toucher un point sans le glisser l'enlève
+    if (modeTactile && pointTenu >= 0 && !pointNouveau && !pointABouge) {
+      pointsEditeur.splice(pointTenu, 1);
+    }
+    pointTenu = -1;
   }
-});
-
-toile.addEventListener("mousemove", function (evenement) {
-  if (etat === "menu") {
-    sourisDuMenu("passage", evenement.offsetX, evenement.offsetY);
-  }
-  if (etat === "editeur" && pointTenu >= 0) {
-    pointsEditeur[pointTenu] = versLeMonde(evenement);
-  }
-});
-
-toile.addEventListener("mouseup", function () {
-  pointTenu = -1;
-});
-
-toile.addEventListener("contextmenu", function (evenement) {
-  evenement.preventDefault();              // pas de menu du navigateur au clic droit
-});
+}
 
 // ===== Le menu : un circuit à gauche, des boutons à droite =====
 
@@ -493,11 +526,29 @@ const MODES = [
   { id: "grandprix", nom: "Le Grand Prix", aide: "Tous les circuits, l'un après l'autre" },
   { id: "editeur", nom: "Dessiner ton circuit", aide: "À la souris, " + POINTS_MAX + " points au plus" },
 ];
+const AIDE_EDITEUR_AU_DOIGT = "Du bout du doigt, " + POINTS_MAX + " points au plus";
 let choix = 0;                             // le numéro du bouton choisi
 let apercu = null;                         // le circuit choisi, prêt à dessiner en petit
 
-// La place du bouton numéro i sur la toile
+// Les modes qu'on peut choisir : au doigt, pas de course à deux (il faudrait un clavier)
+function modesDuMenu() {
+  if (!modeTactile) {
+    return MODES;
+  }
+  const liste = [];
+  for (const m of MODES) {
+    if (m.id !== "duo") {
+      liste.push(m);
+    }
+  }
+  return liste;
+}
+
+// La place du bouton numéro i sur la toile (au doigt, ils sont moins nombreux : on les fait plus grands)
 function boutonDuMenu(i) {
+  if (modeTactile) {
+    return { x: 500, y: 112 + i * 98, largeur: 420, hauteur: 84 };
+  }
   return { x: 500, y: 112 + i * 80, largeur: 420, hauteur: 66 };
 }
 
@@ -506,8 +557,8 @@ function dedans(x, y, rectangle) {
   return x >= rectangle.x && x <= rectangle.x + rectangle.largeur && y >= rectangle.y && y <= rectangle.y + rectangle.hauteur;
 }
 
-const FLECHE_GAUCHE = { x: 50, y: 440, largeur: 60, hauteur: 50 };
-const FLECHE_DROITE = { x: 390, y: 440, largeur: 60, hauteur: 50 };
+const FLECHE_GAUCHE = { x: 40, y: 425, largeur: 90, hauteur: 73 };
+const FLECHE_DROITE = { x: 370, y: 425, largeur: 90, hauteur: 73 };
 
 // sens : -1 pour le circuit d'avant, 1 pour le suivant, 0 pour relire celui-ci
 function changerDeCircuit(sens) {
@@ -518,7 +569,7 @@ function changerDeCircuit(sens) {
 }
 
 function lancerLeChoix() {
-  const id = MODES[choix].id;
+  const id = modesDuMenu()[choix].id;
   const modele = tousLesCircuits()[numeroCircuit];
   if (id === "grandprix") {
     commencerLeGrandPrix();
@@ -533,9 +584,9 @@ function lancerLeChoix() {
 
 function dessinerMenu() {
   pinceau.fillStyle = "#1c1a25";
-  pinceau.fillRect(0, 0, toile.width, toile.height);
-  dessinerVoiture(toile.width / 2 - 290, 58, 0, "#ff7a1a");
-  ecrire("Ma course de voiture", toile.width / 2, 72, 40, "#ff7a1a");
+  pinceau.fillRect(0, 0, LARGEUR, HAUTEUR);
+  dessinerVoiture(LARGEUR / 2 - 290, 58, 0, "#ff7a1a");
+  ecrire("Ma course de voiture", LARGEUR / 2, 72, 40, "#ff7a1a");
 
   // La carte du circuit : son dessin en petit, son nom et son record
   pinceau.fillStyle = "#2a2735";
@@ -560,7 +611,9 @@ function dessinerMenu() {
   }
 
   // Les boutons : celui qui est choisi est orange
-  for (let i = 0; i < MODES.length; i = i + 1) {
+  const modes = modesDuMenu();
+  choix = Math.min(choix, modes.length - 1);
+  for (let i = 0; i < modes.length; i = i + 1) {
     const bouton = boutonDuMenu(i);
     let couleurTexte = "white";
     if (i === choix) {
@@ -572,18 +625,35 @@ function dessinerMenu() {
     pinceau.beginPath();
     pinceau.roundRect(bouton.x, bouton.y, bouton.largeur, bouton.hauteur, 12);
     pinceau.fill();
-    ecrire(MODES[i].nom, bouton.x + bouton.largeur / 2, bouton.y + 30, 22, couleurTexte);
-    ecrire(MODES[i].aide, bouton.x + bouton.largeur / 2, bouton.y + 52, 14, couleurTexte);
+    let aide = modes[i].aide;
+    if (modeTactile && modes[i].id === "editeur") {
+      aide = AIDE_EDITEUR_AU_DOIGT;
+    }
+    ecrire(modes[i].nom, bouton.x + bouton.largeur / 2, bouton.y + bouton.hauteur / 2 - 3, 22, couleurTexte);
+    ecrire(aide, bouton.x + bouton.largeur / 2, bouton.y + bouton.hauteur / 2 + 19, 14, couleurTexte);
   }
 
-  ecrire("↑ ↓ : choisir    ◀ ▶ : changer de circuit    Entrée : c'est parti !", toile.width / 2, 545, 16, "#e9e4f0");
+  if (modeTactile) {
+    ecrire("Touche un mode pour jouer !", LARGEUR / 2, 525, 18, "#e9e4f0");
+    dessinerBoutonsMobile();
+    return;
+  }
+  ecrire("↑ ↓ : choisir    ◀ ▶ : changer de circuit    Entrée : c'est parti !", LARGEUR / 2, 545, 16, "#e9e4f0");
   ecrire("Seul : les flèches, et Espace pour la nitro. À deux : Z Q S D et Espace, contre les flèches et Maj droite",
-    toile.width / 2, 578, 13, "#a49cb4");
+    LARGEUR / 2, 578, 13, "#a49cb4");
 }
 
 // Au menu, la souris choisit un bouton en passant dessus, et le lance d'un clic
 function sourisDuMenu(type, x, y) {
-  for (let i = 0; i < MODES.length; i = i + 1) {
+  if (type === "clic") {
+    for (const bouton of boutonsMobile()) {
+      if (dedans(x, y, bouton)) {
+        bouton.action();
+        return;
+      }
+    }
+  }
+  for (let i = 0; i < modesDuMenu().length; i = i + 1) {
     if (dedans(x, y, boutonDuMenu(i))) {
       choix = i;
       if (type === "clic") {
@@ -632,10 +702,10 @@ function placerLaCamera() {
   if (suivies.length === 2) {
     const ecartX = Math.abs(suivies[0].x - suivies[1].x);
     const ecartY = Math.abs(suivies[0].y - suivies[1].y);
-    zoom = Math.min(1, toile.width / (ecartX + 400), toile.height / (ecartY + 300));
+    zoom = Math.min(1, LARGEUR / (ecartX + 400), HAUTEUR / (ecartY + 300));
     zoom = Math.max(zoom, 0.35);
   }
-  pinceau.translate(toile.width / 2, toile.height / 2);
+  pinceau.translate(LARGEUR / 2, HAUTEUR / 2);
   pinceau.scale(zoom, zoom);
   pinceau.translate(-centreX, -centreY);
 }
@@ -651,7 +721,7 @@ function ecrire(texte, x, y, taille, couleur) {
 // Les compteurs en haut : le tour, le chrono, la place et la nitro de chaque joueur
 function dessinerCompteurs() {
   pinceau.fillStyle = "rgba(0, 0, 0, 0.5)";
-  pinceau.fillRect(0, 0, toile.width, 40);
+  pinceau.fillRect(0, 0, LARGEUR, 40);
   pinceau.textAlign = "left";
   pinceau.font = "bold 18px Verdana";
   let x = 16;
@@ -680,51 +750,59 @@ function dessinerCompteurs() {
 
 function dessinerArrivee() {
   pinceau.fillStyle = "rgba(0, 0, 0, 0.6)";
-  pinceau.fillRect(0, 0, toile.width, toile.height);
+  pinceau.fillRect(0, 0, LARGEUR, HAUTEUR);
   if (mode === "chrono") {
-    ecrire("Arrivée !", toile.width / 2, 230, 60, "#ff7a1a");
-    ecrire("Course en " + chrono(voitures[0].tempsTotal), toile.width / 2, 310, 28, "white");
-    ecrire("Record du tour : " + chrono(meilleurTour), toile.width / 2, 360, 24, "#ffd479");
+    ecrire("Arrivée !", LARGEUR / 2, 230, 60, "#ff7a1a");
+    ecrire("Course en " + chrono(voitures[0].tempsTotal), LARGEUR / 2, 310, 28, "white");
+    ecrire("Record du tour : " + chrono(meilleurTour), LARGEUR / 2, 360, 24, "#ffd479");
   } else {
     let titre = classement[0].nom + " gagne !";
     if (classement[0].nom === "Toi") {
       titre = "Tu gagnes !";
     }
-    ecrire(titre, toile.width / 2, 150, 54, classement[0].couleur);
+    ecrire(titre, LARGEUR / 2, 150, 54, classement[0].couleur);
     for (let i = 0; i < classement.length; i = i + 1) {
       const voiture = classement[i];
       let temps = "en course";
       if (voiture.fini) {
         temps = chrono(voiture.tempsTotal);
       }
-      ecrire((i + 1) + ". " + voiture.nom + "   " + temps, toile.width / 2, 220 + i * 40, 24, voiture.couleur);
+      ecrire((i + 1) + ". " + voiture.nom + "   " + temps, LARGEUR / 2, 220 + i * 40, 24, voiture.couleur);
     }
   }
-  ecrire("Entrée : continuer", toile.width / 2, 520, 20, "#e9e4f0");
+  if (modeTactile) {
+    ecrire("Touche l'écran pour continuer", LARGEUR / 2, 520, 20, "#e9e4f0");
+  } else {
+    ecrire("Entrée : continuer", LARGEUR / 2, 520, 20, "#e9e4f0");
+  }
 }
 
 function dessinerGrandPrix() {
   pinceau.fillStyle = "#1c1a25";
-  pinceau.fillRect(0, 0, toile.width, toile.height);
+  pinceau.fillRect(0, 0, LARGEUR, HAUTEUR);
   const noms = classementDuGrandPrix();
   if (grandPrix.course < CIRCUITS.length - 1) {
-    ecrire("Grand Prix : course " + (grandPrix.course + 1) + "/" + CIRCUITS.length, toile.width / 2, 110, 40, "#ff7a1a");
+    ecrire("Grand Prix : course " + (grandPrix.course + 1) + "/" + CIRCUITS.length, LARGEUR / 2, 110, 40, "#ff7a1a");
   } else {
-    ecrire("🏆 " + noms[0] + " gagne le Grand Prix !", toile.width / 2, 110, 40, "#ffd479");
+    ecrire("🏆 " + noms[0] + " gagne le Grand Prix !", LARGEUR / 2, 110, 40, "#ffd479");
   }
   for (let i = 0; i < noms.length; i = i + 1) {
-    ecrire((i + 1) + ". " + noms[i] + " : " + grandPrix.points[noms[i]] + " points", toile.width / 2, 200 + i * 45, 26, "white");
+    ecrire((i + 1) + ". " + noms[i] + " : " + grandPrix.points[noms[i]] + " points", LARGEUR / 2, 200 + i * 45, 26, "white");
+  }
+  let touche = "Entrée";
+  if (modeTactile) {
+    touche = "Touche l'écran";
   }
   if (grandPrix.course < CIRCUITS.length - 1) {
-    ecrire("Entrée : la course suivante, " + CIRCUITS[grandPrix.course + 1].nom, toile.width / 2, 470, 20, "#e9e4f0");
+    ecrire(touche + " : la course suivante, " + CIRCUITS[grandPrix.course + 1].nom, LARGEUR / 2, 470, 20, "#e9e4f0");
   } else {
-    ecrire("Entrée : revenir au menu", toile.width / 2, 470, 20, "#e9e4f0");
+    ecrire(touche + " : revenir au menu", LARGEUR / 2, 470, 20, "#e9e4f0");
   }
 }
 
 // Toute l'image : le circuit et les voitures vus par la caméra, puis les textes par-dessus
 function dessiner() {
-  pinceau.resetTransform();
+  pinceau.setTransform(FINESSE, 0, 0, FINESSE, 0, 0);
   if (etat === "menu") {
     dessinerMenu();
     return;
@@ -758,12 +836,18 @@ function dessiner() {
   pinceau.restore();
 
   dessinerCompteurs();
+  dessinerCommandesTactiles();
   if (etat === "depart") {
-    ecrire(Math.ceil(compteARebours), toile.width / 2, toile.height / 2, 120, "white");
+    ecrire(Math.ceil(compteARebours), LARGEUR / 2, HAUTEUR / 2, 120, "white");
   } else if (etat === "arrivee") {
     dessinerArrivee();
   }
 }
+
+// Depuis combien de secondes on est sur cet écran : au doigt, on ne quitte pas l'arrivée trop vite
+// (le pouce était encore sur les commandes)
+let etatPrecedent = etat;
+let tempsEcran = 0;
 
 // La boucle de jeu : une image, puis on demande la suivante au navigateur
 function boucle(temps) {
@@ -773,8 +857,14 @@ function boucle(temps) {
   }
   tempsPrecedent = temps;
   duree = Math.min(duree, 0.05);           // après une pause, rien ne fait de bond
+  if (etat !== etatPrecedent) {
+    etatPrecedent = etat;
+    tempsEcran = 0;
+  }
+  tempsEcran = tempsEcran + duree;
   mettreAJour(duree);
   dessiner();
+  rechargerSiNouvelleVersion();
   requestAnimationFrame(boucle);
 }
 
@@ -785,10 +875,11 @@ document.addEventListener("keydown", function (evenement) {
   }
   const code = evenement.code;
   if (etat === "menu") {
+    const nombre = modesDuMenu().length;
     if (code === "ArrowUp") {
-      choix = (choix - 1 + MODES.length) % MODES.length;
+      choix = (choix - 1 + nombre) % nombre;
     } else if (code === "ArrowDown") {
-      choix = (choix + 1) % MODES.length;
+      choix = (choix + 1) % nombre;
     } else if (code === "ArrowLeft") {
       changerDeCircuit(-1);
     } else if (code === "ArrowRight") {
@@ -812,6 +903,101 @@ document.addEventListener("keydown", function (evenement) {
 document.addEventListener("keyup", function (evenement) {
   touches[evenement.code] = false;
 });
+
+// ===== La souris et les doigts =====
+
+// Le pointeur sur la toile, en coordonnées de la toile (960 × 600), quelle que soit sa taille à l'écran
+function surLaToile(evenement) {
+  const cadre = toile.getBoundingClientRect();
+  return {
+    x: (evenement.clientX - cadre.left) * LARGEUR / cadre.width,
+    y: (evenement.clientY - cadre.top) * HAUTEUR / cadre.height,
+  };
+}
+
+toile.addEventListener("pointerdown", function (evenement) {
+  if (evenement.pointerType === "touch") {
+    modeTactile = true;
+  }
+  evenement.preventDefault();
+  const p = surLaToile(evenement);
+  if (commandesTactilesActives() && doigtSur(evenement.pointerId, p.x, p.y, true)) {
+    return;                                // ce doigt tient une commande de course
+  }
+  if (etat === "menu") {
+    sourisDuMenu("clic", p.x, p.y);
+  } else if (etat === "editeur") {
+    sourisDeLEditeur("bas", p, evenement.button);
+  } else if (etat === "depart" || etat === "course") {
+    if (modeTactile && dedans(p.x, p.y, BOUTON_MENU)) {
+      revenirAuMenu();
+    }
+  } else if (etat === "arrivee" || etat === "grandprix") {
+    if (tempsEcran > 1) {
+      apresLArrivee();
+    }
+  }
+});
+
+window.addEventListener("pointermove", function (evenement) {
+  const p = surLaToile(evenement);
+  if (evenement.pointerId in doigts) {
+    doigtSur(evenement.pointerId, p.x, p.y, false);
+  }
+  if (etat === "menu" && evenement.pointerType === "mouse") {
+    sourisDuMenu("passage", p.x, p.y);
+  }
+  if (etat === "editeur") {
+    sourisDeLEditeur("bouge", p, 0);
+  }
+});
+
+function leverLePointeur(evenement) {
+  doigtLeve(evenement.pointerId);
+  if (etat === "editeur") {
+    sourisDeLEditeur("haut", null, 0);
+  }
+}
+window.addEventListener("pointerup", leverLePointeur);
+window.addEventListener("pointercancel", leverLePointeur);
+
+toile.addEventListener("contextmenu", function (evenement) {
+  evenement.preventDefault();              // pas de menu du navigateur au clic droit (ni au doigt appuyé longtemps)
+});
+
+// Quand la fenêtre perd la main (un appel, une autre appli…), on lâche tout et on coupe les moteurs
+function mettreDeCote() {
+  for (const code in touches) {
+    touches[code] = false;
+  }
+  lacherTousLesDoigts();
+  couperLesMoteurs();
+}
+
+function reprendre() {
+  if (etat === "depart" || etat === "course") {
+    for (const voiture of voitures) {
+      if (voiture.moteur !== undefined) {
+        voiture.moteur.play().catch(function () {});
+      }
+    }
+  }
+}
+
+window.addEventListener("blur", mettreDeCote);
+window.addEventListener("focus", reprendre);
+document.addEventListener("visibilitychange", function () {
+  if (document.hidden) {
+    mettreDeCote();
+  } else {
+    reprendre();
+  }
+});
+
+// Le jeu peut s'installer sur l'écran d'accueil et marcher sans réseau
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  navigator.serviceWorker.register("sw.js").catch(function () {});
+}
 
 changerDeCircuit(0);
 requestAnimationFrame(boucle);

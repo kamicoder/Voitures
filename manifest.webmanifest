@@ -1,0 +1,17 @@
+{
+  "name": "Ma course de voiture",
+  "short_name": "Voitures",
+  "description": "Un mini jeu de course de voitures vue de dessus.",
+  "lang": "fr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#16151d",
+  "theme_color": "#16151d",
+  "icons": [
+    { "src": "icones/icone-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icones/icone-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icones/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

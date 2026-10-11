@@ -2,15 +2,31 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>Ma course de voiture</title>
+  <meta name="description" content="Un mini jeu de course de voitures vue de dessus.">
+  <meta name="theme-color" content="#16151d">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Voitures">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="icones/icone-192.png">
+  <link rel="apple-touch-icon" href="icones/icone-180.png">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <h1>Ma course de voiture</h1>
   <canvas id="toile" width="960" height="600"></canvas>
   <p class="aide">Seul : les flèches, et Espace pour la nitro. À deux : Z Q S D et Espace, contre les flèches et Maj droite. Entrée : revenir au menu.</p>
+  <div id="tourne">
+    <div class="dessin">📱</div>
+    <div>Tourne ton téléphone pour piloter 🏎️</div>
+  </div>
   <script src="circuits.js"></script>
   <script src="voiture.js"></script>
+  <script src="tactile.js"></script>
   <script src="jeu.js"></script>
+  <script src="mise-a-jour.js"></script>
 </body>
 </html>

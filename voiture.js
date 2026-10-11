@@ -77,6 +77,14 @@ class Voiture {
     this.entrees.gauche = touches[this.commandes.gauche] === true;
     this.entrees.droite = touches[this.commandes.droite] === true;
     this.entrees.nitro = touches[this.commandes.nitro] === true;
+    // Seul au doigt : les boutons de l'écran comptent aussi, et la voiture accélère tant qu'on ne freine pas
+    if (modeTactile && joueurs().length === 1) {
+      this.entrees.gauche = this.entrees.gauche || touchesTactiles.gauche === true;
+      this.entrees.droite = this.entrees.droite || touchesTactiles.droite === true;
+      this.entrees.reculer = this.entrees.reculer || touchesTactiles.reculer === true;
+      this.entrees.nitro = this.entrees.nitro || touchesTactiles.nitro === true;
+      this.entrees.avancer = !this.entrees.reculer;
+    }
   }
 
   // Le cerveau de l'ordinateur : il vise un point de la trace un peu devant lui
