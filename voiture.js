@@ -78,7 +78,7 @@ class Voiture {
     // Où elle en est : son point sur la trace, et le chemin parcouru depuis la ligne
     this.indice = plusProche(circuit, this.x, this.y, 0);
     this.progres = -recul;
-    this.rouleDepuisLePoint = 0;           // ce qu'elle a roulé depuis qu'elle a changé de point
+    this.rouleDepuisLePoint = 0;           // ce qu'elle a roulé depuis son dernier point de la trace
   }
 
   // Ce que veut le conducteur : les touches du joueur, ou les idées de l'ordinateur
@@ -266,10 +266,8 @@ class Voiture {
   }
 
   // Son point sur la trace, et le chemin parcouru le long de la route depuis la ligne.
-  // Dans l'herbe, seul compte ce qu'elle a vraiment roulé : un raccourci ne fait pas gagner de chemin.
-  // On compare avec tout ce qu'elle a roulé depuis son dernier point de la trace, pas seulement pendant
-  // cette image : les points sont à 10 pixels l'un de l'autre, et dans l'herbe elle n'en roule que 3 ou 4
-  // par image. Sinon, à chaque point, elle perdrait du chemin, et la course finirait après la ligne.
+  // Dans l'herbe, seul compte ce qu'elle a vraiment roulé depuis son dernier point de la trace :
+  // un raccourci ne fait pas gagner de chemin.
   suivreLaTrace(roule, dansLHerbe) {
     this.rouleDepuisLePoint = this.rouleDepuisLePoint + roule;
     const i = plusProche(circuit, this.x, this.y, this.indice);
