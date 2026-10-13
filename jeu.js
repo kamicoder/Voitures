@@ -143,6 +143,7 @@ function jouer(son, vitesse) {
 function commencer(nouveauMode, modele, niveau) {
   mode = nouveauMode;
   circuit = preparerCircuit(modele);
+  poserLesPneus(circuit);
   lireLeRecord(modele);
   voitures = [];
   if (mode === "duo") {

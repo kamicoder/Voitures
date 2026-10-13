@@ -10,6 +10,7 @@ const FROTTEMENT = 0.5;                    // la route freine un peu la voiture
 const FROTTEMENT_HERBE = 2.5;              // l'herbe la freine beaucoup
 const ADHERENCE = 5;                       // les pneus collent à la route : moins, et la voiture glisse
 const ADHERENCE_HERBE = 1.5;
+const BORD = LIMITE - 20;                  // le milieu de la voiture s'arrête là : ses roues touchent les pneus
 
 // La nitro et les pièges
 const VITESSE_NITRO = 760;                 // la vitesse la plus grande pendant la nitro
@@ -78,7 +79,6 @@ class Voiture {
     // Où elle en est : son point sur la trace, et le chemin parcouru depuis la ligne
     this.indice = plusProche(circuit, this.x, this.y, 0);
     this.progres = -recul;
-    this.rouleDepuisLePoint = 0;           // ce qu'elle a roulé depuis son dernier point de la trace
   }
 
   // Ce que veut le conducteur : les touches du joueur, ou les idées de l'ordinateur
@@ -221,7 +221,7 @@ class Voiture {
     this.x = Math.max(0, Math.min(this.x, circuit.largeur));
     this.y = Math.max(0, Math.min(this.y, circuit.hauteur));
     this.vitesse = avant;
-    this.suivreLaTrace(Math.hypot(this.vx, this.vy) * duree, dansLHerbe);
+    this.suivreLaTrace();
 
     // Coincée dans l'herbe ? Au bout d'un moment, on la remet sur la route
     if (dansLHerbe && Math.abs(avant) < 60) {
@@ -265,12 +265,26 @@ class Voiture {
     }
   }
 
-  // Son point sur la trace, et le chemin parcouru le long de la route depuis la ligne.
-  // Dans l'herbe, seul compte ce qu'elle a vraiment roulé depuis son dernier point de la trace :
-  // un raccourci ne fait pas gagner de chemin.
-  suivreLaTrace(roule, dansLHerbe) {
-    this.rouleDepuisLePoint = this.rouleDepuisLePoint + roule;
+  // La barrière de pneus, puis le chemin parcouru le long de la route depuis la ligne.
+  // Avec la barrière, pas de raccourci par l'herbe : le chemin, c'est le point de la trace où elle est.
+  suivreLaTrace() {
     const i = plusProche(circuit, this.x, this.y, this.indice);
+    const point = circuit.trace[i];
+    const dx = this.x - point.x;
+    const dy = this.y - point.y;
+    const loin = Math.hypot(dx, dy);       // sa distance au milieu de la route
+    if (loin > BORD) {
+      // Elle touche les pneus : on la remet contre eux, et elle perd la vitesse qui l'y poussait
+      const ux = dx / loin;                // la direction du milieu de la route vers les pneus, longue de 1
+      const uy = dy / loin;
+      this.x = point.x + ux * BORD;
+      this.y = point.y + uy * BORD;
+      const versLesPneus = this.vx * ux + this.vy * uy;
+      if (versLesPneus > 0) {
+        this.vx = this.vx - ux * versLesPneus * 1.5;   // 1.5 et pas 1 : un petit rebond
+        this.vy = this.vy - uy * versLesPneus * 1.5;
+      }
+    }
     let chemin = circuit.trace[i].d - circuit.trace[this.indice].d;
     if (chemin > circuit.longueur / 2) {
       chemin = chemin - circuit.longueur;  // elle a reculé en passant la ligne
@@ -278,13 +292,7 @@ class Voiture {
     if (chemin < -circuit.longueur / 2) {
       chemin = chemin + circuit.longueur;  // elle a passé la ligne
     }
-    if (dansLHerbe) {
-      chemin = Math.min(chemin, this.rouleDepuisLePoint);
-    }
     this.progres = this.progres + chemin;
-    if (i !== this.indice) {
-      this.rouleDepuisLePoint = 0;         // un nouveau point : on recommence à compter
-    }
     this.indice = i;
   }
 

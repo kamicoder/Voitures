@@ -1,6 +1,7 @@
 // Les circuits : leurs points, leur route, leur trace, et ce qu'on trouve dessus.
 
 const LARGEUR_ROUTE = 150;
+const LIMITE = LARGEUR_ROUTE / 2 + 75;        // plus loin du milieu de la route : la barrière de pneus
 
 // La route passe près de ces points, dans l'ordre, puis revient au premier.
 // Sur la route, chaque objet a sa place le long du tour (0 : la ligne d'arrivée, 0.5 : la moitié)
@@ -158,6 +159,45 @@ function plusProche(c, x, y, autour) {
   return meilleur;
 }
 
+// La barrière : des pneus de chaque côté de la route, à LIMITE de son milieu, peints en rouge et
+// en blanc. On en fait deux chemins (Path2D), comme la route : un pour les rouges, un pour les blancs.
+function poserLesPneus(c) {
+  c.pneusRouges = new Path2D();
+  c.pneusBlancs = new Path2D();
+  const total = c.trace.length;
+  let numero = 0;
+  for (const cote of [-1, 1]) {            // d'un côté de la route, puis de l'autre
+    for (let i = 0; i < total; i = i + 2) {
+      // Le côté : la direction de la route (du caillou d'avant au suivant), tournée d'un quart de tour
+      const avant = c.trace[(i - 1 + total) % total];
+      const apres = c.trace[(i + 1) % total];
+      const longueur = Math.hypot(apres.x - avant.x, apres.y - avant.y);
+      const x = c.trace[i].x - (apres.y - avant.y) / longueur * LIMITE * cote;
+      const y = c.trace[i].y + (apres.x - avant.x) / longueur * LIMITE * cote;
+      if (assezLoinDeLaRoute(c, x, y)) {
+        numero = numero + 1;
+        let pneus = c.pneusBlancs;
+        if (numero % 2 === 0) {
+          pneus = c.pneusRouges;
+        }
+        pneus.moveTo(x + 8, y);            // sans ça, le chemin relierait les pneus par un trait
+        pneus.arc(x, y, 8, 0, 2 * Math.PI);
+      }
+    }
+  }
+}
+
+// Vrai si (x, y) est loin de tous les cailloux de la trace : pas de pneu sur un autre morceau de
+// route (au croisement du Huit), ni trop serré à l'intérieur d'un virage
+function assezLoinDeLaRoute(c, x, y) {
+  for (const point of c.trace) {
+    if (Math.hypot(point.x - x, point.y - y) < LIMITE - 3) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Une place le long du tour et un décalage sur le côté, en un point du circuit
 function surLaTrace(c, place, decalage) {
   const point = c.trace[Math.floor(place * c.trace.length) % c.trace.length];
@@ -192,6 +232,10 @@ function dessinerCircuit() {
   pinceau.fillRect(-2000, -2000, circuit.largeur + 4000, circuit.hauteur + 4000);
   pinceau.fillStyle = "#3f8f3a";           // l'herbe
   pinceau.fillRect(0, 0, circuit.largeur, circuit.hauteur);
+  pinceau.fillStyle = "#d8322e";           // la barrière : les pneus rouges, puis les blancs
+  pinceau.fill(circuit.pneusRouges);
+  pinceau.fillStyle = "white";
+  pinceau.fill(circuit.pneusBlancs);
 
   pinceau.lineJoin = "round";
   pinceau.lineCap = "round";
